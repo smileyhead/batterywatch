@@ -41,12 +41,12 @@ PlasmoidItem {
                 if (hiddenDevices.indexOf(device.serial) === -1) {
                     var displayName = device.name
                     if (device.serial) {
-                        displayName += " (" + device.serial.substring(device.serial.length - 8) + ")"
+                        displayName += "\n" + device.serial
                     }
                     lines.push(displayName + ": " + device.percentage + "%")
                 }
             }
-            toolTipSubText = lines.length > 0 ? lines.join("\n") : "All devices hidden"
+            toolTipSubText = lines.length > 0 ? lines.join("\n\n") : "All devices hidden"
         }
     }
     
@@ -326,9 +326,9 @@ PlasmoidItem {
     
     // Full representation (popup when clicked)
     fullRepresentation: Item {
-        Layout.minimumWidth: Kirigami.Units.gridUnit * 20
+        Layout.minimumWidth: Kirigami.Units.gridUnit * 25
         Layout.minimumHeight: Kirigami.Units.gridUnit * 10
-        Layout.preferredWidth: Kirigami.Units.gridUnit * 25
+        Layout.preferredWidth: Kirigami.Units.gridUnit * 30
         Layout.preferredHeight: column.implicitHeight + Kirigami.Units.gridUnit * 2
         
         ColumnLayout {
@@ -350,64 +350,109 @@ PlasmoidItem {
                     Layout.fillWidth: true
                     spacing: Kirigami.Units.smallSpacing
                     
-                    RowLayout {
+                    Item {
                         Layout.fillWidth: true
-                        spacing: Kirigami.Units.smallSpacing
+                        Layout.preferredHeight: deviceRow.implicitHeight
                         
-                        Kirigami.Icon {
-                            source: modelData.icon
-                            Layout.preferredWidth: Kirigami.Units.iconSizes.medium
-                            Layout.preferredHeight: Kirigami.Units.iconSizes.medium
-                        }
+                        property bool isHovered: false
                         
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 2
+                        RowLayout {
+                            id: deviceRow
+                            anchors.fill: parent
+                            spacing: Kirigami.Units.smallSpacing
+                            
+                            Kirigami.Icon {
+                                source: modelData.icon
+                                Layout.preferredWidth: Kirigami.Units.iconSizes.medium
+                                Layout.preferredHeight: Kirigami.Units.iconSizes.medium
+                            }
+                            
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 2
+                                
+                                PlasmaComponents.Label {
+                                    text: modelData.name || "Unknown Device"
+                                    font.bold: true
+                                }
+                                
+                                PlasmaComponents.Label {
+                                    text: modelData.serial
+                                    font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                                    color: Kirigami.Theme.disabledTextColor
+                                }
+                            }
+                            
+                            Item {
+                                Layout.preferredWidth: Kirigami.Units.gridUnit * 8
+                                Layout.fillHeight: true
+                                
+                                PlasmaComponents.ProgressBar {
+                                    anchors.fill: parent
+                                    visible: !parent.parent.parent.isHovered
+                                    from: 0
+                                    to: 100
+                                    value: modelData.percentage
+                                }
+                                
+                                // Buttons shown on hover
+                                RowLayout {
+                                    anchors.fill: parent
+                                    spacing: Kirigami.Units.smallSpacing
+                                    visible: parent.parent.parent.isHovered
+                                    
+                                    PlasmaComponents.Button {
+                                        icon.name: hiddenDevices.indexOf(modelData.serial) === -1 ? "visibility" : "hint"
+                                        text: ""
+                                        display: PlasmaComponents.AbstractButton.IconOnly
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: Kirigami.Units.iconSizes.small
+                                        
+                                        PlasmaComponents.ToolTip {
+                                            text: hiddenDevices.indexOf(modelData.serial) === -1 ? "Hide from tray" : "Show in tray"
+                                        }
+                                        
+                                        onClicked: toggleDeviceVisibility(modelData.serial)
+                                    }
+                                    
+                                    PlasmaComponents.Button {
+                                        icon.name: "network-disconnect"
+                                        text: ""
+                                        display: PlasmaComponents.AbstractButton.IconOnly
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: Kirigami.Units.iconSizes.small
+                                        
+                                        PlasmaComponents.ToolTip {
+                                            text: "Disconnect device"
+                                        }
+                                        
+                                        onClicked: disconnectDevice(modelData.serial)
+                                    }
+                                }
+                            }
+                            
+                            Item {
+                                Layout.preferredWidth: Kirigami.Units.largeSpacing
+                            }
                             
                             PlasmaComponents.Label {
-                                text: modelData.name || "Unknown Device"
+                                text: modelData.percentage + "%"
                                 font.bold: true
+                                Layout.minimumWidth: Kirigami.Units.gridUnit * 2.5
+                                horizontalAlignment: Text.AlignRight
                             }
+                        }
+                        
+                        MouseArea {
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
                             
-                            PlasmaComponents.Label {
-                                text: modelData.serial
-                                font.pixelSize: Kirigami.Theme.smallFont.pixelSize
-                                color: Kirigami.Theme.disabledTextColor
-                            }
-                        }
-                        
-                        PlasmaComponents.ProgressBar {
-                            Layout.preferredWidth: Kirigami.Units.gridUnit * 6
-                            from: 0
-                            to: 100
-                            value: modelData.percentage
-                        }
-                        
-                        PlasmaComponents.Label {
-                            text: modelData.percentage + "%"
-                            font.bold: true
-                            Layout.minimumWidth: Kirigami.Units.gridUnit * 2.5
-                            horizontalAlignment: Text.AlignRight
-                        }
-                        
-                        PlasmaComponents.Button {
-                            icon.name: hiddenDevices.indexOf(modelData.serial) === -1 ? "visibility" : "hint"
-                            text: ""
-                            display: PlasmaComponents.AbstractButton.IconOnly
-                            PlasmaComponents.ToolTip {
-                                text: hiddenDevices.indexOf(modelData.serial) === -1 ? "Hide from tray" : "Show in tray"
-                            }
-                            onClicked: toggleDeviceVisibility(modelData.serial)
-                        }
-                        
-                        PlasmaComponents.Button {
-                            icon.name: "network-disconnect"
-                            text: ""
-                            display: PlasmaComponents.AbstractButton.IconOnly
-                            PlasmaComponents.ToolTip {
-                                text: "Disconnect device"
-                            }
-                            onClicked: disconnectDevice(modelData.serial)
+                            onEntered: parent.isHovered = true
+                            onExited: parent.isHovered = false
+                            
+                            // Pass clicks through to buttons
+                            onPressed: mouse.accepted = false
                         }
                     }
                     
