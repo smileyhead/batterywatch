@@ -1,0 +1,71 @@
+name: Create Release
+
+on:
+  workflow_dispatch:  # Allows manual trigger from GitHub Actions tab
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Required to create releases and tags
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Extract version from metadata.json
+        id: get_version
+        run: |
+          VERSION=$(jq -r '.KPlugin.Version' metadata.json)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version found: $VERSION"
+      
+      - name: Check if tag already exists
+        id: check_tag
+        run: |
+          if git rev-parse "v${{ steps.get_version.outputs.version }}" >/dev/null 2>&1; then
+            echo "Tag v${{ steps.get_version.outputs.version }} already exists!"
+            exit 1
+          fi
+      
+      - name: Build plasmoid
+        run: |
+          mkdir -p dist
+          zip -r dist/BatteryWatch.plasmoid . \
+            -x "contents/screenshots/*" \
+            -x "build-plasmoid.sh" \
+            -x ".git/*" \
+            -x ".github/*" \
+            -x ".gitignore" \
+            -x "dist/*"
+          echo "Built: dist/BatteryWatch.plasmoid"
+          ls -lh dist/BatteryWatch.plasmoid
+      
+      - name: Create Git tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "v${{ steps.get_version.outputs.version }}" -m "Release v${{ steps.get_version.outputs.version }}"
+          git push origin "v${{ steps.get_version.outputs.version }}"
+      
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.get_version.outputs.version }}
+          name: BatteryWatch v${{ steps.get_version.outputs.version }}
+          draft: false
+          prerelease: false
+          files: dist/BatteryWatch.plasmoid
+          body: |
+            ## BatteryWatch v${{ steps.get_version.outputs.version }}
+            
+            ### Installation
+            Download `BatteryWatch.plasmoid` and install it:
+            ```bash
+            kpackagetool6 --type Plasma/Applet --install BatteryWatch.plasmoid
+            ```
+            
+            Or to upgrade from a previous version:
+            ```bash
+            kpackagetool6 --type Plasma/Applet --upgrade BatteryWatch.plasmoid
+            ```
