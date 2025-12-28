@@ -104,94 +104,147 @@ PlasmoidItem {
         bluetoothCtlSource.connectSource("bluetoothctl disconnect " + serial)
     }
     
+    function refreshDevices() {
+        // Manual refresh - re-scan all devices immediately
+        upowerPresenceSource.connectSource("upower -e")
+    }
+    
     Component.onCompleted: {
         loadHiddenDevices()
     }
     
-    // D-Bus connection to UPower
+    // --- Smart Polling Implementation ---
+    // Efficiently checks for device presence (cheap) frequently, 
+    // and updates battery levels (expensive) infrequently.
+    
+    // 1. Presence Source: Checks for added/removed devices
     P5Support.DataSource {
-        id: upowerSource
+        id: upowerPresenceSource
         engine: "executable"
         connectedSources: []
         interval: 0
         
         onNewData: function(sourceName, data) {
             disconnectSource(sourceName)
-            
             var lines = data["stdout"].split("\n")
-            deviceCheckCount = 0
-            deviceDetailsSource.pendingDevices = []
-            deviceDetailsSource.processedCount = 0
+            var foundPaths = []
             
-            // Count how many devices we need to check
+            // 1. Collect all current valid device paths
             for (var i = 0; i < lines.length; i++) {
                 var line = lines[i].trim()
                 if (line.startsWith("/org/freedesktop/UPower/devices/") && 
                     line.indexOf("DisplayDevice") === -1) {
-                    deviceCheckCount++
+                    foundPaths.push(line)
+                    
+                    // SMART CHECK: Only fetch details if we don't know about this device yet
+                    var known = false
+                    for (var j = 0; j < connectedDevices.length; j++) {
+                        // Compare against the DBus object path, not the native path
+                        if (connectedDevices[j].objectPath === line) {
+                            known = true
+                            break
+                        }
+                    }
+                    if (!known) {
+                        refreshDevice(line)
+                    }
                 }
             }
             
-            // If no devices, clear the list immediately
-            if (deviceCheckCount === 0) {
-                connectedDevices = []
-                updateTooltip()
-                return
+            // 2. Remove devices that are no longer present
+            var pathsToRemove = []
+            for (var i = 0; i < connectedDevices.length; i++) {
+                var device = connectedDevices[i]
+                // Use objectPath for robust comparison
+                if (device.objectPath && foundPaths.indexOf(device.objectPath) === -1) {
+                    pathsToRemove.push(device.objectPath)
+                }
             }
             
-            // Now query each device
-            for (var i = 0; i < lines.length; i++) {
-                var line = lines[i].trim()
-                if (line.startsWith("/org/freedesktop/UPower/devices/") && 
-                    line.indexOf("DisplayDevice") === -1) {
-                    getDeviceDetails(line)
-                }
+            for (var i = 0; i < pathsToRemove.length; i++) {
+                handleDeviceRemoved(pathsToRemove[i])
             }
         }
         
         Component.onCompleted: {
+            // Initial scan
             connectSource("upower -e")
         }
     }
     
+    // 2. Presence Timer: Checks for hotplugged devices frequently (2s)
+    Timer {
+        id: presenceTimer
+        interval: 2000 
+        running: true
+        repeat: true
+        onTriggered: {
+            upowerPresenceSource.connectSource("upower -e")
+        }
+    }
+    
+    // 3. Battery Update Timer: Refreshes levels infrequently (60s)
+    Timer {
+        id: updateTimer
+        interval: 60000 
+        running: true
+        repeat: true
+        onTriggered: {
+            // Refresh details for all known devices
+            for (var i = 0; i < connectedDevices.length; i++) {
+                if (connectedDevices[i].objectPath) {
+                    refreshDevice(connectedDevices[i].objectPath)
+                }
+            }
+        }
+    }
+    
+
+    
+    // 3. Device Details Fetcher: Gets info for specific device
     P5Support.DataSource {
         id: deviceDetailsSource
         engine: "executable"
         connectedSources: []
         interval: 0
         
-        property var pendingDevices: []
-        property int processedCount: 0
-        
         onNewData: function(sourceName, data) {
-            disconnectSource(sourceName)
+            disconnectSource(sourceName) // Single shot
+            
+            // Extract the original DBus path from the command
+            // sourceName is "upower -i /org/freedesktop/UPower/devices/..."
+            var parts = sourceName.split(" ")
+            var objectPath = parts[parts.length-1]
             
             var output = data["stdout"]
+            // Use existing parser logic (inline or external)
+            // We deleted usage of DeviceParser.qml in previous plan but code is still there?
+            // Actually deviceParser is still in the file line 34.
+            
             var deviceInfo = deviceParser.parseDeviceInfo(output)
             
-            if (deviceInfo && deviceInfo.connectionType !== connectionType.wired && deviceInfo.percentage >= 0) {
-                pendingDevices.push(deviceInfo)
-            }
-            
-            processedCount++
-            
-            // Check if all devices have been processed
-            if (processedCount >= deviceCheckCount) {
-                // Sort by name first, then by serial/MAC address
-                pendingDevices.sort(function(a, b) {
-                    var nameCompare = a.name.localeCompare(b.name)
-                    if (nameCompare !== 0) {
-                        return nameCompare
+            if (deviceInfo && deviceInfo.percentage >= 0) {
+                // Store the DBus object path for syncing
+                deviceInfo.objectPath = objectPath
+                
+                // Determine connection type if not already set correctly by parser
+                if (deviceInfo.nativePath) {
+                    var path = deviceInfo.nativePath.toLowerCase()
+                     if (path.indexOf("bluez") !== -1 || path.indexOf("bluetooth") !== -1) {
+                        deviceInfo.connectionType = connectionType.bluetooth
+                    } else if (deviceInfo.type === "Line Power") {
+                         deviceInfo.connectionType = connectionType.wired
                     }
-                    return a.serial.localeCompare(b.serial)
-                })
-                connectedDevices = pendingDevices.slice()
-                updateTooltip()
-                pendingDevices = []
-                processedCount = 0
-                deviceCheckCount = 0
+                }
+                
+                updateOrAddDevice(deviceInfo)
             }
         }
+    }
+    
+    function refreshDevice(path) {
+        // Fetch details for this specific device
+        deviceDetailsSource.connectSource("upower -i " + path)
     }
     
     P5Support.DataSource {
@@ -203,34 +256,50 @@ PlasmoidItem {
         onNewData: function(sourceName, data) {
             disconnectSource(sourceName)
             // Trigger refresh after disconnect
-            Qt.callLater(function() {
-                deviceCheckCount = 0
-                deviceDetailsSource.pendingDevices = []
-                deviceDetailsSource.processedCount = 0
-                upowerSource.connectSource("upower -e")
-            })
+            Qt.callLater(refreshDevices)
         }
     }
     
-    property int deviceCheckCount: 0
+
     
-    function getDeviceDetails(devicePath) {
-        deviceDetailsSource.connectSource("upower -i " + devicePath)
-    }
-    
-    // Timer to refresh device list periodically
-    Timer {
-        id: refreshTimer
-        interval: 5000 
-        running: true
-        repeat: true
+    function updateOrAddDevice(deviceInfo) {
+        // Find existing device by serial/objectPath
+        var found = false
+        for (var i = 0; i < connectedDevices.length; i++) {
+            // Match by serial OR valid object path
+            var sameSerial = connectedDevices[i].serial && connectedDevices[i].serial === deviceInfo.serial
+            var samePath = connectedDevices[i].objectPath && connectedDevices[i].objectPath === deviceInfo.objectPath
+            
+            if (sameSerial || samePath) {
+                connectedDevices[i] = deviceInfo
+                found = true
+                break
+            }
+        }
         
-        onTriggered: {
-            deviceCheckCount = 0
-            deviceDetailsSource.pendingDevices = []
-            deviceDetailsSource.processedCount = 0
-            upowerSource.connectSource("upower -e")
+        if (!found) {
+            connectedDevices.push(deviceInfo)
         }
+        
+        // Re-sort and trigger update
+        connectedDevices.sort(function(a, b) {
+            var nameCompare = a.name.localeCompare(b.name)
+            if (nameCompare !== 0) return nameCompare
+            return a.serial.localeCompare(b.serial)
+        })
+        connectedDevices = connectedDevices.slice() // Trigger property change
+        updateTooltip()
+    }
+    
+    function handleDeviceRemoved(objectPath) {
+        var newDevices = []
+        for (var i = 0; i < connectedDevices.length; i++) {
+            if (connectedDevices[i].objectPath !== objectPath) {
+                newDevices.push(connectedDevices[i])
+            }
+        }
+        connectedDevices = newDevices
+        updateTooltip()
     }
     
     // Compact representation (what shows in the system tray)
@@ -335,10 +404,7 @@ PlasmoidItem {
                     }
                     
                     onClicked: {
-                        deviceCheckCount = 0
-                        deviceDetailsSource.pendingDevices = []
-                        deviceDetailsSource.processedCount = 0
-                        upowerSource.connectSource("upower -e")
+                        refreshDevices()
                     }
                 }
             }
