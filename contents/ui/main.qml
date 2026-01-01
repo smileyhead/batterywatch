@@ -214,17 +214,6 @@ PlasmoidItem {
             if (deviceInfo && deviceInfo.percentage >= 0) {
                 // Store the DBus object path for syncing
                 deviceInfo.objectPath = objectPath
-                
-                // Determine connection type if not already set correctly by parser
-                if (deviceInfo.nativePath) {
-                    var path = deviceInfo.nativePath.toLowerCase()
-                     if (path.indexOf("bluez") !== -1 || path.indexOf("bluetooth") !== -1) {
-                        deviceInfo.connectionType = connectionType.bluetooth
-                    } else if (deviceInfo.type === "Line Power") {
-                         deviceInfo.connectionType = connectionType.wired
-                    }
-                }
-                
                 updateOrAddDevice(deviceInfo)
             }
         }
@@ -312,7 +301,6 @@ PlasmoidItem {
             width: Kirigami.Units.iconSizes.smallMedium
             height: Kirigami.Units.iconSizes.smallMedium
             visible: !root.hasVisibleDevices && (inEditMode || root.allDevicesHidden)
-            opacity: 1
         }
         
         RowLayout {
