@@ -13,6 +13,11 @@ Item {
     readonly property int wirelessType: 1
     readonly property int bluetoothType: 2
     
+    // UPower device type overrides for devices incorrectly reported by UPower
+    readonly property var upowerDeviceTypeOverrides: ({
+        "logitech k400 plus": "keyboard",  // Keyboard with touchpad, reported as mouse
+    })
+    
     function refresh() {
         listSource.connectSource("upower -e")
     }
@@ -48,7 +53,8 @@ Item {
                 device.serial = trimmedLine.split(":").slice(1).join(":").trim()
             }
             else if (trimmedLine.indexOf("model:") !== -1) {
-                device.name = trimmedLine.split(":").slice(1).join(":").trim()
+                device.model = trimmedLine.split(":").slice(1).join(":").trim()
+                device.name = device.model
             }
             else if (trimmedLine.indexOf("percentage:") !== -1) {
                 var percentStr = trimmedLine.split(":")[1].trim().replace("%", "")
@@ -82,7 +88,21 @@ Item {
 
         if (deviceType.length > 0) {
             device.type = deviceType
-            device.icon = DeviceUtils.getIconForType(deviceType)
+        }
+
+        // Apply UPower-specific device type overrides for incorrectly reported devices
+        if (device.model) {
+            var modelLower = device.model.toLowerCase()
+            var overrideType = root.upowerDeviceTypeOverrides[modelLower]
+            if (overrideType) {
+                console.log("BatteryWatch: Applying UPower device override for '" + device.model + "': " + 
+                           device.type + " -> " + overrideType)
+                device.type = overrideType
+            }
+        }
+
+        if (device.type) {
+            device.icon = DeviceUtils.getIconForType(device.type)
         }
 
         if (!device.serial && device.nativePath) {
