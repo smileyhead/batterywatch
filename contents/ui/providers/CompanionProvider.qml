@@ -28,7 +28,7 @@ Item {
                 if (root.available) {
                     root.available = false
                     root.devices = []
-                    console.log("BatteryWatch: Companion service not available")
+                    console.log("BatteryWatch: Companion service disconnected")
                 }
                 return
             }
@@ -108,6 +108,13 @@ Item {
         }
     }
     
-    Timer { interval: 10000; running: true; repeat: true; onTriggered: root.refresh() }
-    Timer { interval: 2000; running: true; repeat: false; onTriggered: root.refresh() }
+    // Poll frequently when service is available, probe slowly when not
+    Timer {
+        interval: root.available ? 10000 : 60000
+        running: true
+        repeat: true
+        onTriggered: root.refresh()
+    }
+    
+    Component.onCompleted: root.refresh()
 }
