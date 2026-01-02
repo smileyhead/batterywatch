@@ -2,11 +2,14 @@
     "KPlugin": {
         "Authors": [
             {
-                "Email": "itay.avra@gmail.com"
+                "Email": "itay.avra@gmail.com",
+                "Email[hu]": "itay.avra@gmail.com"
             }
         ],
         "Category": "System Information",
+        "Category[hu]": "Rendszerinformáció",
         "Description": "Monitor battery levels of all connected devices",
+        "Description[hu]": "Csatlakoztatott eszközök akkumulátorszintjének megjelenítése",
         "Icon": "/icons/battery-monitor.png",
         "Id": "com.github.itayavra.batterywatch",
         "Name": "BatteryWatch",
