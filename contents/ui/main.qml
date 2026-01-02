@@ -296,18 +296,20 @@ PlasmoidItem {
         Layout.minimumWidth: Kirigami.Units.gridUnit * 25
         Layout.preferredWidth: Kirigami.Units.gridUnit * 30
         Layout.minimumHeight: Kirigami.Units.gridUnit * 8
-        Layout.preferredHeight: Math.min(
-            Kirigami.Units.gridUnit * 5 + root.allDevices.length * Kirigami.Units.gridUnit * 4,
-            Kirigami.Units.gridUnit * 17
-        )
-        Layout.maximumHeight: Kirigami.Units.gridUnit * 17
+        Layout.preferredHeight: {
+            var baseHeight = Kirigami.Units.gridUnit * 5
+            var deviceHeight = root.allDevices.length * Kirigami.Units.gridUnit * 4
+            var totalHeight = baseHeight + deviceHeight
+            var maxHeight = Kirigami.Units.gridUnit * 17
+            return Math.min(totalHeight, maxHeight)
+        }
+        Layout.maximumHeight: Kirigami.Units.gridUnit * 35
         
         ColumnLayout {
             anchors.fill: parent
             anchors.margins: Kirigami.Units.largeSpacing
-            spacing: Kirigami.Units.largeSpacing
+            spacing: Kirigami.Units.smallSpacing
             
-            // Header
             RowLayout {
                 Layout.fillWidth: true
                 spacing: Kirigami.Units.smallSpacing
@@ -321,17 +323,25 @@ PlasmoidItem {
                 
                 PlasmaComponents.ToolButton {
                     icon.name: "view-refresh"
+                    text: "Refresh"
                     display: PlasmaComponents.AbstractButton.IconOnly
-                    PlasmaComponents.ToolTip { text: "Refresh devices" }
-                    onClicked: refreshDevices()
+                    
+                    PlasmaComponents.ToolTip {
+                        text: "Refresh devices"
+                    }
+                    
+                    onClicked: {
+                        refreshDevices()
+                    }
                 }
             }
             
-            // Device list
             PlasmaComponents.ScrollView {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
+                
                 clip: true
+                
                 PlasmaComponents.ScrollBar.horizontal.policy: PlasmaComponents.ScrollBar.AlwaysOff
                 
                 ColumnLayout {
@@ -345,123 +355,113 @@ PlasmoidItem {
                             Layout.fillWidth: true
                             spacing: 0
                             
-                            // Device row with hover detection
-                            MouseArea {
-                                id: rowHoverArea
+                            // Store reference to device for nested components
+                            property var device: modelData
+                            property bool hasMultipleBatteries: device.batteries && device.batteries.length > 1
+                            
+                            Item {
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: Kirigami.Units.gridUnit * 4
                                 Layout.topMargin: Kirigami.Units.smallSpacing
                                 Layout.bottomMargin: Kirigami.Units.smallSpacing
-                                hoverEnabled: true
                                 
                                 RowLayout {
                                     anchors.fill: parent
                                     spacing: Kirigami.Units.smallSpacing
-                                    
-                                    // Clickable device icon (visibility toggle)
-                                    MouseArea {
-                                        id: iconArea
+
+                                    Kirigami.Icon {
+                                        source: device.icon
                                         Layout.preferredWidth: Kirigami.Units.iconSizes.medium
                                         Layout.preferredHeight: Kirigami.Units.iconSizes.medium
                                         Layout.alignment: Qt.AlignVCenter
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: root.toggleDeviceVisibility(modelData.serial)
-                                        
-                                        Kirigami.Icon {
-                                            anchors.fill: parent
-                                            source: modelData.icon || "battery-symbolic"
-                                            opacity: root.hiddenDevices.indexOf(modelData.serial) !== -1 ? 0.4 : 1.0
-                                        }
-                                        
-                                        PlasmaComponents.ToolTip {
-                                            visible: iconArea.containsMouse
-                                            text: root.hiddenDevices.indexOf(modelData.serial) !== -1 ? "Show in tray" : "Hide from tray"
-                                        }
                                     }
                                     
-                                    // Device info (2 rows: name, MAC)
                                     ColumnLayout {
                                         Layout.fillWidth: true
                                         Layout.alignment: Qt.AlignVCenter
                                         spacing: 2
                                         
-                                        RowLayout {
+                                        PlasmaComponents.Label {
+                                            text: device.name || "Unknown Device"
+                                            font.bold: true
                                             Layout.fillWidth: true
-                                            spacing: Kirigami.Units.smallSpacing
-                                            
-                                            PlasmaComponents.Label {
-                                                text: modelData.name || "Unknown Device"
-                                                font.bold: true
-                                                elide: Text.ElideRight
-                                            }
-                                            
-                                            // Disconnect button (right of name, visible on hover only)
-                                            MouseArea {
-                                                id: disconnectArea
-                                                visible: rowHoverArea.containsMouse && modelData.connectionType === 2 && modelData.bluetoothAddress
-                                                Layout.preferredWidth: Kirigami.Units.iconSizes.small
-                                                Layout.preferredHeight: Kirigami.Units.iconSizes.small
-                                                Layout.alignment: Qt.AlignVCenter
-                                                hoverEnabled: true
-                                                cursorShape: Qt.PointingHandCursor
-                                                onClicked: root.disconnectBluetoothDevice(modelData.bluetoothAddress)
-                                                
-                                                Kirigami.Icon {
-                                                    anchors.fill: parent
-                                                    source: "network-disconnect"
-                                                }
-                                                
-                                                PlasmaComponents.ToolTip {
-                                                    visible: disconnectArea.containsMouse
-                                                    text: "Disconnect device"
-                                                }
-                                            }
-                                            
-                                            // Spacer to push battery info to the right
-                                            Item { Layout.fillWidth: true }
+                                            elide: Text.ElideRight
                                         }
                                         
                                         PlasmaComponents.Label {
-                                            text: modelData.serial || ""
+                                            text: device.serial
                                             font.pixelSize: Kirigami.Theme.smallFont.pixelSize
                                             color: Kirigami.Theme.disabledTextColor
                                             Layout.fillWidth: true
                                             elide: Text.ElideRight
-                                            visible: modelData.serial
+                                        }
+                                        
+                                        // Multi-battery row (shown under MAC address)
+                                        RowLayout {
+                                            visible: hasMultipleBatteries
+                                            Layout.fillWidth: true
+                                            spacing: Kirigami.Units.largeSpacing
+                                            
+                                            Repeater {
+                                                model: hasMultipleBatteries ? device.batteries : []
+                                                
+                                                PlasmaComponents.Label {
+                                                    text: {
+                                                        var bat = modelData
+                                                        var label = bat.label || "Battery"
+                                                        var charging = bat.charging ? " ⚡" : ""
+                                                        return label + ": " + bat.percentage + "%" + charging
+                                                    }
+                                                    font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                                                }
+                                            }
                                         }
                                     }
                                     
-                                    // Battery info (right side)
                                     RowLayout {
                                         Layout.alignment: Qt.AlignVCenter
-                                        spacing: Kirigami.Units.smallSpacing
                                         
-                                        // Store device reference for nested Repeater
-                                        property var device: modelData
-                                        
-                                        // Batteries with labels (e.g., L:100%⚡ R:90% C:60%)
-                                        Repeater {
-                                            model: (parent.device.batteries && parent.device.batteries.length > 0) ? parent.device.batteries : []
+                                        PlasmaComponents.ToolButton {
+                                            visible: device.connectionType === 2 && device.bluetoothAddress
+                                            icon.name: "network-disconnect"
+                                            text: "Disconnect"
+                                            display: PlasmaComponents.AbstractButton.IconOnly
+                                            onClicked: disconnectBluetoothDevice(device.bluetoothAddress)
                                             
-                                            PlasmaComponents.Label {
-                                                text: {
-                                                    var bat = modelData
-                                                    var charging = bat.charging ? "⚡" : ""
-                                                    if (bat.label) {
-                                                        return bat.label.charAt(0) + ":" + bat.percentage + "%" + charging
-                                                    } else {
-                                                        return bat.percentage + "%" + charging
-                                                    }
-                                                }
-                                                font.bold: true
+                                            PlasmaComponents.ToolTip {
+                                                text: "Disconnect device"
+                                            }
+                                            
+                                            MouseArea {
+                                                anchors.fill: parent
+                                                hoverEnabled: true
+                                                cursorShape: Qt.PointingHandCursor
+                                                onPressed: mouse.accepted = false
                                             }
                                         }
                                         
-                                        // Fallback: no batteries array, just percentage
+                                        PlasmaComponents.ToolButton {
+                                            icon.name: root.hiddenDevices.indexOf(device.serial) === -1 ? "view-visible" : "view-hidden"
+                                            text: root.hiddenDevices.indexOf(device.serial) === -1 ? "Hide" : "Show"
+                                            display: PlasmaComponents.AbstractButton.IconOnly
+                                            onClicked: toggleDeviceVisibility(device.serial)
+                                            
+                                            PlasmaComponents.ToolTip {
+                                                text: root.hiddenDevices.indexOf(device.serial) === -1 ? "Hide from tray" : "Show in tray"
+                                            }
+                                            
+                                            MouseArea {
+                                                anchors.fill: parent
+                                                hoverEnabled: true
+                                                cursorShape: Qt.PointingHandCursor
+                                                onPressed: mouse.accepted = false
+                                            }
+                                        }
+                                        
+                                        // Single battery: show percentage
                                         PlasmaComponents.Label {
-                                            visible: !parent.device.batteries || parent.device.batteries.length === 0
-                                            text: parent.device.percentage + "%"
+                                            visible: !hasMultipleBatteries
+                                            text: device.percentage + "%"
                                             font.bold: true
                                             Layout.minimumWidth: Kirigami.Units.gridUnit * 2
                                             horizontalAlignment: Text.AlignRight
@@ -470,7 +470,6 @@ PlasmoidItem {
                                 }
                             }
                             
-                            // Separator between devices
                             Kirigami.Separator {
                                 Layout.fillWidth: true
                                 visible: index < root.allDevices.length - 1
@@ -478,7 +477,6 @@ PlasmoidItem {
                         }
                     }
                     
-                    // Empty state
                     PlasmaComponents.Label {
                         visible: root.allDevices.length === 0
                         text: "No connected devices with battery info found"
