@@ -95,6 +95,9 @@ Item {
             var modelLower = device.model.toLowerCase()
             var overrideType = root.upowerDeviceTypeOverrides[modelLower]
             if (overrideType) {
+				// i18n: Used when a device is known by BatteryWatch to be misreported by UPower. 
+				// %1 is the device's model name. %2 is the erroneously reported device type (e.g.: ‘mouse’). 
+				// %3 is the correct device type.
                 console.log(i18n("BatteryWatch: Applying UPower device override for '%1': %2 -> %3", 
                     device.model, device.type, overrideType))
                 device.type = overrideType
